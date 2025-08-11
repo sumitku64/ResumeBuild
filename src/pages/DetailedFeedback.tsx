@@ -2,9 +2,18 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useState, useEffect } from "react";
+import { Progress } from "@/components/ui/progress";
+import { useState, useEffect, useCallback, useRef, CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
+import { animations } from "@/lib/animations";
+import { ResumeAnalyzer, AnalysisIssue, AnalysisResult } from "@/utils/resumeAnalyzer";
+import { DynamicAnalysisEngine, DynamicHighlights } from "@/utils/dynamicAnalysisEngine";
+import PDFViewerFitWidth from "@/components/PDFViewerFitToView";
+
+// Remove static highlights as we're now using dynamic analysis
+
 import { 
   TrendingUp, 
   FileText, 
@@ -31,13 +40,70 @@ import {
 import Header from "@/components/dashboard/Header";
 
 const DetailedFeedback = () => {
-  const [activeSystemSection, setActiveSystemSection] = useState("presentation");
+  const [activeSystemSection, setActiveSystemSection] = useState("impact");
   const [selectedImpactField, setSelectedImpactField] = useState("Actionable");
   const [selectedPresentationField, setSelectedPresentationField] = useState("Number of Pages");
   const [selectedCompetencyField, setSelectedCompetencyField] = useState("Analytical");
   const [resumeData, setResumeData] = useState(null);
+  
+  // New dynamic analysis state
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [dynamicHighlights, setDynamicHighlights] = useState<DynamicHighlights>({
+    spelling: [],
+    grammar: [],
+    redundancy: [],
+    format: [],
+    skills: []
+  });
+  const [activeHighlights, setActiveHighlights] = useState<string[]>([]);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const hasAnalyzedRef = useRef(false); // Use ref instead of state to prevent re-renders
+  
+  // Extract misspelled words from dynamic highlights for PDF text layer highlighting
+  const misspelledWords = dynamicHighlights.spelling.map(issue => 
+    issue.text.toLowerCase().replace(/[^a-z]/g, '')
+  ).filter(word => word.length > 0);
+  
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // New function to analyze PDF dynamically
+  const analyzePDFDynamically = useCallback(async (fileUrl: string) => {
+    if (hasAnalyzedRef.current) return; // Prevent re-analysis
+    
+    setIsAnalyzing(true);
+    hasAnalyzedRef.current = true;
+    try {
+      console.log('Starting dynamic PDF analysis...');
+      const highlights = await DynamicAnalysisEngine.analyzePDF(fileUrl);
+      setDynamicHighlights(highlights);
+      
+      // Also run the existing text analysis if we have extracted text
+      if (resumeData?.extractedText) {
+        const analyzer = new ResumeAnalyzer(resumeData.extractedText);
+        const result = analyzer.analyzeAll();
+        setAnalysisResult(result);
+      }
+      
+      console.log('Dynamic analysis complete:', highlights);
+      const totalIssues = Object.values(highlights).flat().length;
+      toast({
+        title: "Analysis Complete",
+        description: `Found ${totalIssues} potential improvements in your resume`,
+        variant: "default",
+      });
+    } catch (error) {
+      console.error('Error analyzing PDF:', error);
+      toast({
+        title: "Analysis Error",
+        description: "Failed to analyze PDF content",
+        variant: "destructive",
+      });
+      hasAnalyzedRef.current = false; // Allow retry on error
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, [resumeData, toast]);
 
   useEffect(() => {
     // Load resume analysis data from localStorage
@@ -57,6 +123,11 @@ const DetailedFeedback = () => {
         console.log('Extracted text preview:', parsedData.extractedText?.substring(0, 200));
         
         setResumeData(parsedData);
+        
+        // Run dynamic PDF analysis only once
+        if (parsedData.extractedText && parsedData.fileUrl && !hasAnalyzedRef.current) {
+          analyzePDFDynamically(parsedData.fileUrl);
+        }
       } catch (error) {
         console.error('Error parsing resume analysis data:', error);
         toast({
@@ -66,7 +137,40 @@ const DetailedFeedback = () => {
         });
       }
     }
+  }, [toast, analyzePDFDynamically]);
+
+  // Simple function to toggle highlights with static implementation
+  const toggleHighlight = useCallback((analysisType: string) => {
+    setActiveHighlights(prev => {
+      const isCurrentlyActive = prev.includes(analysisType);
+      if (isCurrentlyActive) {
+        // Remove highlight
+        toast({
+          title: `${analysisType.charAt(0).toUpperCase() + analysisType.slice(1)} Analysis`,
+          description: `Hiding ${analysisType.replace('_', ' ')} highlights`,
+          duration: 2000,
+        });
+        return prev.filter(type => type !== analysisType);
+      } else {
+        // Add highlight
+        toast({
+          title: `${analysisType.charAt(0).toUpperCase() + analysisType.slice(1)} Analysis`,
+          description: `Showing ${analysisType.replace('_', ' ')} highlights on resume`,
+          duration: 2000,
+        });
+        return [...prev, analysisType];
+      }
+    });
   }, [toast]);
+
+  // New function to handle issue clicks
+  const handleIssueClick = (issue: AnalysisIssue) => {
+    toast({
+      title: `${issue.type.replace(/([A-Z])/g, ' $1').trim()} Issue`,
+      description: issue.suggestion,
+      variant: issue.severity === 'high' ? 'destructive' : 'default',
+    });
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -95,10 +199,12 @@ const DetailedFeedback = () => {
   };
 
   const impactMetrics = [
-    { title: "Actionable", status: "Good Job!", icon: Target },
     { title: "Specifics", status: "On Track!", icon: Target },
+    { title: "Measurable", status: "On Track!", icon: Target },
+    { title: "Actionable", status: "Good Job!", icon: Target },
     { title: "Redundancy", status: "Needs Work!", icon: XCircle },
-    { title: "Tactical", status: "Needs Work!", icon: XCircle }
+    { title: "Tactical", status: "Needs Work!", icon: XCircle },
+   
   ];
 
   const presentationMetrics = [
@@ -263,6 +369,65 @@ const getImpactContent = (field: string) => {
     });
   };
 
+  const handleManualAnalysis = () => {
+    if (resumeData?.fileUrl) {
+      hasAnalyzedRef.current = false; // Reset analysis flag
+      analyzePDFDynamically(resumeData.fileUrl);
+    } else {
+      toast({
+        title: "No Resume Found",
+        description: "Please upload a resume first",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleTestHighlights = () => {
+    // Add test highlights to demonstrate functionality
+    const testHighlights: DynamicHighlights = {
+      spelling: [
+        {
+          id: 'test-spell-1',
+          type: 'spelling',
+          text: 'experiance',
+          suggestion: 'Change "experiance" to "experience"',
+          coordinates: {
+            top: '15%',
+            left: '25%',
+            width: '10%',
+            height: '2%'
+          },
+          color: '#ef4444'
+        }
+      ],
+      grammar: [
+        {
+          id: 'test-grammar-1',
+          type: 'grammar',
+          text: 'was responsible for',
+          suggestion: 'Use stronger action verbs like "managed" or "led"',
+          coordinates: {
+            top: '35%',
+            left: '20%',
+            width: '15%',
+            height: '2%'
+          },
+          color: '#f97316'
+        }
+      ],
+      redundancy: [],
+      format: [],
+      skills: []
+    };
+    
+    setDynamicHighlights(testHighlights);
+    toast({
+      title: "Test Highlights Added",
+      description: "Click on spelling or grammar buttons to see highlights",
+      variant: "default",
+    });
+  };
+
   return (
     <div className="min-h-screen bg-dashboard-bg">
       <style>{`
@@ -282,13 +447,14 @@ const getImpactContent = (field: string) => {
       
       <div className="p-6">
         {/* Header */}
-        <div className="mb-6">
+        <motion.div className="mb-6" {...animations.fadeIn}>
           <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-2">
             <Button 
               variant="ghost" 
               size="sm" 
               onClick={handleBackToDashboard}
               className="hover:bg-muted p-1 h-auto"
+              animated={true}
             >
               <Home className="h-4 w-4 mr-1" />
               Student Dashboard
@@ -299,230 +465,382 @@ const getImpactContent = (field: string) => {
               size="sm" 
               onClick={handleBackToAnalysis}
               className="hover:bg-muted p-1 h-auto"
+              animated={true}
             >
               Resume Module
             </Button>
           </div>
           
           <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-foreground">Resume Feedback</h1>
-            <div className="flex gap-2">
-              <Button variant="ghost" size="sm" onClick={handleDownloadReport}>
+            <motion.h1 
+              className="text-xl font-semibold text-foreground"
+              {...animations.slideInFromLeft}
+            >
+              Resume Feedback
+            </motion.h1>
+            <motion.div 
+              className="flex gap-2"
+              {...animations.slideInFromRight}
+            >
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleManualAnalysis}
+                disabled={isAnalyzing}
+                animated={true}
+                condition="info"
+              >
+                {isAnalyzing ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mr-2"></div>
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 mr-2" />
+                    Analyze Resume
+                  </>
+                )}
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleTestHighlights}
+                animated={true}
+                condition="warning"
+              >
+                <AlertCircle className="h-4 w-4 mr-2" />
+                Test Highlights
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleDownloadReport}
+                animated={true}
+                condition="info"
+              >
                 <Download className="h-4 w-4 mr-2" />
                 Download
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleShareReport}>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleShareReport}
+                animated={true}
+                condition="success"
+              >
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleSendEmail}>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleSendEmail}
+                animated={true}
+                condition="info"
+              >
                 <Send className="h-4 w-4 mr-2" />
                 Email
               </Button>
-            </div>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
 
         {/* Tabs */}
-        <Tabs defaultValue="summary" className="space-y-6">
-          <TabsList className="grid w-fit grid-cols-3 bg-muted">
-            <TabsTrigger value="summary" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              Summary
-            </TabsTrigger>
-            <TabsTrigger value="system" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              System Feedback
+        <motion.div {...animations.fadeIn} transition={{ delay: 0.3 }}>
+          <Tabs defaultValue="summary" className="space-y-6">
+            <TabsList className="grid w-fit grid-cols-4 bg-muted">
+              <TabsTrigger value="summary" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                Summary
+              </TabsTrigger>
+              <TabsTrigger value="system" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+                System Feedback
             </TabsTrigger>
             <TabsTrigger value="bullet" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-              Bullet Level Feedback
+              Bullet Level
+            </TabsTrigger>
+            <TabsTrigger value="help" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+              Highlighting Guide
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="summary" className="space-y-6">
+          <TabsContent value="summary" className="space-y-6" animated={true}>
             <div className="grid grid-cols-4 gap-6">
               {/* Main Content - 3 columns */}
               <div className="col-span-3 space-y-6">
                 {/* Overall Score */}
-                <Card className="p-6 bg-gradient-card border-0 shadow-moderate">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="p-3 bg-muted rounded-lg">
-                        <TrendingUp className="h-6 w-6 text-muted-foreground" />
+                {/* Overall Score Card */}
+                <motion.div {...animations.fadeIn} transition={{ delay: 0.2 }}>
+                  <Card className="p-6 bg-gradient-card border-0 shadow-moderate" animated={true} hoverEffect={true}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <motion.div 
+                          className="p-3 bg-muted rounded-lg"
+                          {...animations.iconHover}
+                        >
+                          <TrendingUp className="h-6 w-6 text-muted-foreground" />
+                        </motion.div>
+                        <div>
+                          <h2 className="text-lg font-semibold text-foreground">Overall Score</h2>
+                          <p className="text-sm text-muted-foreground">
+                            {isAnalyzing ? "Analyzing your resume..." : "RScan considers lot of parameters inside 3 core modules. Check how you performed on these parameters"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h2 className="text-lg font-semibold text-foreground">Overall Score</h2>
-                        <p className="text-sm text-muted-foreground">
-                          RScan considers lot of parameters inside 3 core modules. Check how you performed on these parameters
-                        </p>
-                      </div>
+                      <motion.div 
+                        className="text-center"
+                        animate={{
+                          scale: [1, 1.05, 1]
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      >
+                        <div className="w-20 h-20 bg-warning rounded-full flex items-center justify-center">
+                          {isAnalyzing ? (
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+                          ) : (
+                            <span className="text-2xl font-bold text-white">
+                              {Math.max(100 - (
+                                Object.values(dynamicHighlights).flat().length * 5
+                              ), 50)}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm text-muted-foreground">/100</span>
+                      </motion.div>
                     </div>
-                    <div className="text-center">
-                      <div className="w-20 h-20 bg-warning rounded-full flex items-center justify-center">
-                        <span className="text-2xl font-bold text-white">{resumeData?.score || 68}</span>
-                      </div>
-                      <span className="text-sm text-muted-foreground">/100</span>
-                    </div>
-                  </div>
-                </Card>
+                  </Card>
+                </motion.div>
 
                 {/* Metrics Grid */}
-                <div className="grid grid-cols-3 gap-6">
+                <motion.div 
+                  className="grid grid-cols-3 gap-6"
+                  {...animations.staggerContainer}
+                >
                   {/* Impact */}
-                  <Card className="p-6 bg-gradient-card border-0 shadow-moderate">
-                    <div className="text-center mb-4">
-                      <div className="text-3xl font-bold text-success mb-1">{resumeData?.metrics?.[0]?.score || 28}</div>
-                      <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[0]?.maxScore || 40}</div>
-                      <h3 className="font-semibold text-foreground mt-2">Impact</h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Focuses on the quality of content and its impact on recruiters.
-                      </p>
-                    </div>
-                    
-                    <div className="w-full bg-muted rounded-full h-2 mb-4">
-                      <div className="bg-success h-2 rounded-full" style={{ width: '70%' }}></div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {impactMetrics.map((metric, index) => (
-                        <div 
-                          key={index} 
-                          className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:scale-105 hover:shadow-sm group cursor-pointer"
-                          style={{
-                            transform: 'perspective(1000px) rotateX(0deg)',
-                            transformStyle: 'preserve-3d',
-                            transition: 'transform 0.3s ease-in-out'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(15deg) rotateY(5deg)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
-                          }}
+                  <motion.div {...animations.staggerItem} transition={{ delay: 0.1 }}>
+                    <Card className="p-6 bg-gradient-card border-0 shadow-moderate" animated={true} hoverEffect={true}>
+                      <div className="text-center mb-4">
+                        <motion.div 
+                          className="text-3xl font-bold text-success mb-1"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
                         >
-                          <div className="flex items-center space-x-2">
-                            <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-                            <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            {getStatusIcon(metric.status)}
-                            <span className={`text-xs ${getStatusColor(metric.status)} group-hover:font-semibold transition-all duration-300`}>
-                              {metric.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
+                          {resumeData?.metrics?.[0]?.score || 28}
+                        </motion.div>
+                        <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[0]?.maxScore || 40}</div>
+                        <h3 className="font-semibold text-foreground mt-2">Quality</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Focuses on the quality of content and its impact on recruiters.
+                        </p>
+                      </div>
+                      
+                      <div className="w-full bg-muted rounded-full h-2 mb-4">
+                        <Progress value={70} animated={true} color="success" />
+                      </div>
+
+                      <motion.div 
+                        className="space-y-3"
+                        {...animations.staggerContainer}
+                      >
+                        {impactMetrics.map((metric, index) => (
+                          <motion.div 
+                            key={index}
+                            {...animations.staggerItem}
+                            transition={{ delay: 0.8 + index * 0.1 }}
+                            whileHover={{ 
+                              scale: 1.02, 
+                              x: 5,
+                              transition: { duration: 0.2 }
+                            }}
+                            className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:shadow-sm group cursor-pointer"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <motion.div whileHover={{ rotate: 10 }}>
+                                <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                              </motion.div>
+                              <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <motion.div whileHover={{ scale: 1.2 }}>
+                                {getStatusIcon(metric.status)}
+                              </motion.div>
+                              <Badge 
+                                variant={metric.status === "Good Job!" ? "success" : 
+                                        metric.status === "On Track!" ? "warning" : "destructive"}
+                                animated={true}
+                                className="text-xs group-hover:font-semibold transition-all duration-300"
+                              >
+                                {metric.status}
+                              </Badge>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    </Card>
+                  </motion.div>
 
                   {/* Presentation */}
-                  <Card className="p-6 bg-gradient-card border-0 shadow-moderate">
-                    <div className="text-center mb-4">
-                      <div className="text-3xl font-bold text-success mb-1">{resumeData?.metrics?.[1]?.score || 23}</div>
-                      <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[1]?.maxScore || 30}</div>
-                      <h3 className="font-semibold text-foreground mt-2">Presentation</h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Focuses on whether your resume is in sync with format requirements.
-                      </p>
-                    </div>
-                    
-                    <div className="w-full bg-muted rounded-full h-2 mb-4">
-                      <div className="bg-success h-2 rounded-full" style={{ width: '77%' }}></div>
-                    </div>
-
-                    <div className="space-y-3">
-                      {presentationMetrics.map((metric, index) => (
-                        <div 
-                          key={index} 
-                          className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:scale-105 hover:shadow-sm group cursor-pointer"
-                          style={{
-                            transform: 'perspective(1000px) rotateX(0deg)',
-                            transformStyle: 'preserve-3d',
-                            transition: 'transform 0.3s ease-in-out'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(15deg) rotateY(5deg)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
-                          }}
+                  <motion.div {...animations.staggerItem} transition={{ delay: 0.2 }}>
+                    <Card className="p-6 bg-gradient-card border-0 shadow-moderate" animated={true} hoverEffect={true}>
+                      <div className="text-center mb-4">
+                        <motion.div 
+                          className="text-3xl font-bold text-success mb-1"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.6, type: "spring", stiffness: 200 }}
                         >
-                          <div className="flex items-center space-x-2">
-                            <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-                            <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            {getStatusIcon(metric.status)}
-                            <span className={`text-xs ${getStatusColor(metric.status)} group-hover:font-semibold transition-all duration-300`}>
-                              {metric.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
+                          {resumeData?.metrics?.[1]?.score || 23}
+                        </motion.div>
+                        <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[1]?.maxScore || 30}</div>
+                        <h3 className="font-semibold text-foreground mt-2">Format</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Focuses on whether your resume is in sync with format requirements.
+                        </p>
+                      </div>
+                      
+                      <div className="w-full bg-muted rounded-full h-2 mb-4">
+                        <Progress value={77} animated={true} color="success" />
+                      </div>
 
-                  {/* Competencies */}
-                  <Card className="p-6 bg-gradient-card border-0 shadow-moderate">
-                    <div className="text-center mb-4">
-                      <div className="text-3xl font-bold text-warning mb-1">{resumeData?.metrics?.[2]?.score || 17}</div>
-                      <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[2]?.maxScore || 30}</div>
-                      <h3 className="font-semibold text-foreground mt-2">Competencies</h3>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Assesses how well you have reflected your 5 core competencies.
-                      </p>
-                    </div>
-                    
-                    <div className="w-full bg-muted rounded-full h-2 mb-4">
-                      <div className="bg-warning h-2 rounded-full" style={{ width: '57%' }}></div>
-                    </div>
+                      <motion.div 
+                        className="space-y-3"
+                        {...animations.staggerContainer}
+                      >
+                        {presentationMetrics.map((metric, index) => (
+                          <motion.div 
+                            key={index}
+                            {...animations.staggerItem}
+                            transition={{ delay: 0.9 + index * 0.1 }}
+                            whileHover={{ 
+                              scale: 1.02, 
+                              x: 5,
+                              transition: { duration: 0.2 }
+                            }}
+                            className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:shadow-sm group cursor-pointer"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <motion.div whileHover={{ rotate: 10 }}>
+                                <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                              </motion.div>
+                              <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <motion.div whileHover={{ scale: 1.2 }}>
+                                {getStatusIcon(metric.status)}
+                              </motion.div>
+                              <Badge 
+                                variant={metric.status === "Good Job!" ? "success" : 
+                                        metric.status === "On Track!" ? "warning" : "destructive"}
+                                animated={true}
+                                className="text-xs group-hover:font-semibold transition-all duration-300"
+                              >
+                                {metric.status}
+                              </Badge>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    </Card>
+                  </motion.div>
 
-                    <div className="space-y-3">
-                      {competencyMetrics.map((metric, index) => (
-                        <div 
-                          key={index} 
-                          className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:scale-105 hover:shadow-sm group cursor-pointer"
-                          style={{
-                            transform: 'perspective(1000px) rotateX(0deg)',
-                            transformStyle: 'preserve-3d',
-                            transition: 'transform 0.3s ease-in-out'
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(15deg) rotateY(5deg)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
-                          }}
+                  {/* Competency */}
+                  <motion.div {...animations.staggerItem} transition={{ delay: 0.3 }}>
+                    <Card className="p-6 bg-gradient-card border-0 shadow-moderate" animated={true} hoverEffect={true}>
+                      <div className="text-center mb-4">
+                        <motion.div 
+                          className="text-3xl font-bold text-warning mb-1"
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.7, type: "spring", stiffness: 200 }}
                         >
-                          <div className="flex items-center space-x-2">
-                            <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
-                            <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            {getStatusIcon(metric.status)}
-                            <span className={`text-xs ${getStatusColor(metric.status)} group-hover:font-semibold transition-all duration-300`}>
-                              {metric.status}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </Card>
-                </div>
+                          {resumeData?.metrics?.[2]?.score || 17}
+                        </motion.div>
+                        <div className="text-sm text-muted-foreground">/{resumeData?.metrics?.[2]?.maxScore || 30}</div>
+                        <h3 className="font-semibold text-foreground mt-2">Competency</h3>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Focuses on whether you are reflecting essential competencies through your resume.
+                        </p>
+                      </div>
+                      
+                      <div className="w-full bg-muted rounded-full h-2 mb-4">
+                        <Progress value={57} animated={true} color="warning" />
+                      </div>
+
+                      <motion.div 
+                        className="space-y-3"
+                        {...animations.staggerContainer}
+                      >
+                        {competencyMetrics.map((metric, index) => (
+                          <motion.div 
+                            key={index}
+                            {...animations.staggerItem}
+                            transition={{ delay: 1.0 + index * 0.1 }}
+                            whileHover={{ 
+                              scale: 1.02, 
+                              x: 5,
+                              transition: { duration: 0.2 }
+                            }}
+                            className="flex items-center justify-between p-2 rounded-lg transition-all duration-300 hover:bg-muted/30 hover:shadow-sm group cursor-pointer"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <motion.div whileHover={{ rotate: 10 }}>
+                                <metric.icon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors duration-300" />
+                              </motion.div>
+                              <span className="text-sm text-foreground group-hover:font-medium transition-all duration-300">{metric.title}</span>
+                            </div>
+                            <div className="flex items-center space-x-1">
+                              <motion.div whileHover={{ scale: 1.2 }}>
+                                {getStatusIcon(metric.status)}
+                              </motion.div>
+                              <Badge 
+                                variant={metric.status === "Good Job!" ? "success" : 
+                                        metric.status === "On Track!" ? "warning" : "destructive"}
+                                animated={true}
+                                className="text-xs group-hover:font-semibold transition-all duration-300"
+                              >
+                                {metric.status}
+                              </Badge>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
+                    </Card>
+                  </motion.div>
+                </motion.div>
 
                 {/* Status Legend */}
-                <div className="flex justify-center space-x-8">
-                  <div className="flex items-center space-x-2">
+                <motion.div 
+                  className="flex justify-center space-x-8"
+                  {...animations.fadeIn}
+                  transition={{ delay: 1.5 }}
+                >
+                  <motion.div 
+                    className="flex items-center space-x-2"
+                    whileHover={{ scale: 1.05 }}
+                  >
                     <CheckCircle className="h-4 w-4 text-success" />
                     <span className="text-sm text-success">Good Job!</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                  </motion.div>
+                  <motion.div 
+                    className="flex items-center space-x-2"
+                    whileHover={{ scale: 1.05 }}
+                  >
                     <AlertTriangle className="h-4 w-4 text-warning" />
                     <span className="text-sm text-warning">On Track!</span>
-                  </div>
-                  <div className="flex items-center space-x-2">
+                  </motion.div>
+                  <motion.div 
+                    className="flex items-center space-x-2"
+                    whileHover={{ scale: 1.05 }}
+                  >
                     <XCircle className="h-4 w-4 text-destructive" />
                     <span className="text-sm text-destructive">Needs Work!</span>
-                  </div>
-                </div>
+                  </motion.div>
+                </motion.div>
               </div>
 
               {/* Right Sidebar */}
@@ -571,73 +889,265 @@ const getImpactContent = (field: string) => {
             </div>
           </TabsContent>
 
-          <TabsContent value="system" className="h-full">
-            <div className="flex h-[calc(100vh-250px)]">
+          <TabsContent value="system" className="h-full" animated={true}>
+            <motion.div 
+              className="flex h-[calc(100vh-250px)]"
+              {...animations.fadeIn}
+              transition={{ duration: 0.6 }}
+            >
               {/* Left 50% - Feedback Interface */}
               <div className="w-1/2 pr-3 flex flex-col h-full">
-                <div className="bg-orange-50 p-3 rounded-lg mb-3 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-orange-500 text-white rounded-lg px-3 py-1 text-lg font-bold">{resumeData?.score || 68}</div>
-                    <span className="text-gray-700 font-medium">Resume Score</span>
+                {/* Enhanced Header Section */}
+                <motion.div 
+                  className="bg-gradient-to-br from-orange-50 via-yellow-50 to-amber-50 p-6 rounded-xl mb-4 flex-shrink-0 border-2 border-orange-200 shadow-lg"
+                  {...animations.slideUp}
+                  transition={{ delay: 0.2 }}
+                >
+                  <div className="flex items-center gap-4 mb-6">
+                    <motion.div 
+                      className="bg-gradient-to-r from-orange-500 to-yellow-500 text-white rounded-xl px-4 py-2 text-2xl font-bold shadow-lg"
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
+                      whileHover={{ scale: 1.05 }}
+                    >
+                      <motion.span
+                        key={resumeData?.score || 68}
+                        initial={{ y: -20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.5 }}
+                      >
+                        {resumeData?.score || 68}
+                      </motion.span>
+                    </motion.div>
+                    <div>
+                      <h3 className="text-gray-800 font-bold text-lg">Resume Score</h3>
+                      <p className="text-gray-600 text-sm">Click sections below for detailed feedback</p>
+                    </div>
                   </div>
                   
-                  <div className="flex gap-8 mt-3">
-                    <div 
-                      className={`text-center cursor-pointer ${activeSystemSection === "impact" ? "border-b-2 border-black pb-1" : ""}`}
-                      onClick={() => setActiveSystemSection("impact")}
-                    >
-                      <div className="text-green-600 text-xl font-bold">{resumeData?.metrics?.[0]?.score || 28}<span className="text-sm text-gray-500">/{resumeData?.metrics?.[0]?.maxScore || 40}</span></div>
-                      <div className="text-sm text-gray-600 flex items-center gap-1">
-                        Impact <CheckCircle className="h-4 w-4 text-green-500" />
-                      </div>
-                    </div>
-                    <div 
-                      className={`text-center cursor-pointer ${activeSystemSection === "presentation" ? "border-b-2 border-black pb-1" : ""}`}
-                      onClick={() => setActiveSystemSection("presentation")}
-                    >
-                      <div className="text-green-600 text-xl font-bold">{resumeData?.metrics?.[1]?.score || 23}<span className="text-sm text-gray-500">/{resumeData?.metrics?.[1]?.maxScore || 30}</span></div>
-                      <div className="text-sm text-gray-600 flex items-center gap-1">
-                        Presentation <CheckCircle className="h-4 w-4 text-green-500" />
-                      </div>
-                    </div>
-                    <div 
-                      className={`text-center cursor-pointer ${activeSystemSection === "competencies" ? "border-b-2 border-black pb-1" : ""}`}
-                      onClick={() => setActiveSystemSection("competencies")}
-                    >
-                      <div className="text-orange-500 text-xl font-bold">{resumeData?.metrics?.[2]?.score || 17}<span className="text-sm text-gray-500">/{resumeData?.metrics?.[2]?.maxScore || 30}</span></div>
-                      <div className="text-sm text-gray-600 flex items-center gap-1">
-                        Competencies <Clock className="h-4 w-4 text-orange-500" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                  {/* Enhanced Section Tabs */}
+                  <motion.div 
+                    className="grid grid-cols-3 gap-4"
+                    variants={animations.staggerContainer}
+                    initial="initial"
+                    animate="animate"
+                  >
+                    {[
+                      { 
+                        key: "impact", 
+                        title: "Quality", 
+                        score: resumeData?.metrics?.[0]?.score || 28, 
+                        maxScore: resumeData?.metrics?.[0]?.maxScore || 40,
+                        color: "green",
+                        icon: CheckCircle,
+                        status: "Good Job!"
+                      },
+                      { 
+                        key: "presentation", 
+                        title: "Format", 
+                        score: resumeData?.metrics?.[1]?.score || 23, 
+                        maxScore: resumeData?.metrics?.[1]?.maxScore || 30,
+                        color: "green",
+                        icon: CheckCircle,
+                        status: "Good Job!"
+                      },
+                      { 
+                        key: "competencies", 
+                        title: "Skills", 
+                        score: resumeData?.metrics?.[2]?.score || 17, 
+                        maxScore: resumeData?.metrics?.[2]?.maxScore || 30,
+                        color: "orange",
+                        icon: Clock,
+                        status: "On Track!"
+                      }
+                    ].map((section, index) => (
+                      <motion.div 
+                        key={section.key}
+                        className={`relative text-center cursor-pointer p-4 rounded-xl border-2 transition-all duration-300 ${
+                          activeSystemSection === section.key 
+                            ? `bg-${section.color}-100 border-${section.color}-500 shadow-lg transform scale-105` 
+                            : "bg-white border-gray-200 hover:border-gray-300 hover:shadow-md"
+                        }`}
+                        onClick={() => setActiveSystemSection(section.key)}
+                        variants={animations.staggerItem}
+                        whileHover={{ 
+                          y: -2, 
+                          scale: activeSystemSection === section.key ? 1.05 : 1.02,
+                          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.1)"
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {/* Active Indicator */}
+                        <AnimatePresence>
+                          {activeSystemSection === section.key && (
+                            <motion.div
+                              className={`absolute -top-1 -right-1 w-4 h-4 bg-${section.color}-500 rounded-full`}
+                              initial={{ scale: 0, rotate: -180 }}
+                              animate={{ scale: 1, rotate: 0 }}
+                              exit={{ scale: 0, rotate: 180 }}
+                              transition={{ duration: 0.3 }}
+                            />
+                          )}
+                        </AnimatePresence>
+
+                        <motion.div 
+                          className={`text-${section.color}-600 text-xl font-bold mb-2`}
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          transition={{ delay: 0.7 + index * 0.1, type: "spring" }}
+                        >
+                          <motion.span
+                            key={`${section.key}-${section.score}`}
+                            initial={{ y: -10, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {section.score}
+                          </motion.span>
+                          <span className="text-sm text-gray-500">/{section.maxScore}</span>
+                        </motion.div>
+                        
+                        <div className="text-sm text-gray-700 flex items-center justify-center gap-2">
+                          <span className="font-medium">{section.title}</span>
+                          <motion.div
+                            whileHover={{ rotate: 360, scale: 1.2 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <section.icon className={`h-4 w-4 text-${section.color}-500`} />
+                          </motion.div>
+                        </div>
+
+                        {/* Progress bar */}
+                        <div className="mt-3 w-full bg-gray-200 rounded-full h-1.5">
+                          <motion.div 
+                            className={`bg-${section.color}-500 h-1.5 rounded-full`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${(section.score / section.maxScore) * 100}%` }}
+                            transition={{ delay: 1 + index * 0.1, duration: 1, ease: "easeOut" }}
+                          />
+                        </div>
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                </motion.div>
 
                 {/* Content area with scroll */}
                 <div className="flex-1 overflow-y-auto min-h-0">
 
                 {/* Dynamic Content based on active section */}
-                {activeSystemSection === "impact" && (
-                  <div className="flex gap-4 h-full">
-                    {/* Categories Sidebar */}
-                    <div className="w-36 space-y-1">
-                      {impactMetrics.map((metric, index) => (
-                        <div 
-                          key={index} 
-                          className={`flex items-center gap-3 p-2 cursor-pointer rounded ${
-                            selectedImpactField === metric.title ? "bg-white border-l-4 border-green-500" : "hover:bg-gray-50"
-                          }`}
-                          onClick={() => setSelectedImpactField(metric.title)}
-                        >
-                          <div className={`w-8 h-8 ${metric.status === "Good Job!" ? "bg-green-100" : "bg-red-100"} rounded-full flex items-center justify-center`}>
-                            {metric.status === "Good Job!" ? 
-                              <CheckCircle className="h-4 w-4 text-green-600" /> : 
-                              <AlertCircle className="h-4 w-4 text-red-600" />
-                            }
-                          </div>
-                          <span className="text-sm font-medium text-gray-700">{metric.title}</span>
-                        </div>
-                      ))}
-                    </div>
+                <AnimatePresence mode="wait">
+                  {activeSystemSection === "impact" && (
+                    <motion.div 
+                      key="impact"
+                      className="flex gap-4 h-full"
+                      initial={{ opacity: 0, x: 100 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -100 }}
+                      transition={{ duration: 0.4, ease: "easeInOut" }}
+                    >
+                      {/* Enhanced Categories Sidebar */}
+                      <motion.div 
+                        className="w-40 space-y-2"
+                        variants={animations.staggerContainer}
+                        initial="initial"
+                        animate="animate"
+                      >
+                        {impactMetrics.map((metric, index) => (
+                          <motion.div 
+                            key={index}
+                            className={`group relative flex items-center gap-3 p-3 cursor-pointer rounded-xl border-2 transition-all duration-300 ${
+                              selectedImpactField === metric.title 
+                                ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-500 shadow-lg transform scale-105" 
+                                : "bg-white border-gray-200 hover:border-green-300 hover:shadow-md"
+                            }`}
+                            onClick={() => {
+                              setSelectedImpactField(metric.title);
+                              // Map metric title to analysis type for highlighting
+                              const analysisTypeMap: { [key: string]: string } = {
+                                "Actionable": "actionVerbs",
+                                "Specifics": "quantifiableResults", 
+                                "Measurable": "quantifiableResults",
+                                "Redundancy": "redundancy",
+                                "Tactical": "professional"
+                              };
+                              const analysisType = analysisTypeMap[metric.title];
+                              if (analysisType) {
+                                toggleHighlight(analysisType);
+                              }
+                            }}
+                            variants={animations.staggerItem}
+                            whileHover={{ 
+                              x: 5, 
+                              scale: selectedImpactField === metric.title ? 1.05 : 1.02,
+                              boxShadow: metric.status === "Good Job!" 
+                                ? "0 10px 25px -5px rgba(16, 185, 129, 0.3)" 
+                                : "0 10px 25px -5px rgba(239, 68, 68, 0.3)"
+                            }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            {/* Active Indicator */}
+                            <AnimatePresence>
+                              {selectedImpactField === metric.title && (
+                                <motion.div
+                                  className="absolute -left-1 top-1/2 w-1 h-8 bg-green-500 rounded-full"
+                                  initial={{ scaleY: 0, y: "-50%" }}
+                                  animate={{ scaleY: 1, y: "-50%" }}
+                                  exit={{ scaleY: 0, y: "-50%" }}
+                                  transition={{ duration: 0.3 }}
+                                />
+                              )}
+                            </AnimatePresence>
+
+                            <motion.div 
+                              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 ${
+                                metric.status === "Good Job!" 
+                                  ? "bg-green-100 border-green-300" 
+                                  : "bg-red-100 border-red-300"
+                              }`}
+                              whileHover={{ 
+                                rotate: 360, 
+                                scale: 1.1,
+                                backgroundColor: metric.status === "Good Job!" ? "#10b981" : "#ef4444"
+                              }}
+                              transition={{ duration: 0.3 }}
+                            >
+                              <motion.div
+                                whileHover={{ scale: 1.2 }}
+                                transition={{ duration: 0.2 }}
+                              >
+                                {metric.status === "Good Job!" ? 
+                                  <CheckCircle className="h-5 w-5 text-green-600 group-hover:text-white" /> : 
+                                  <AlertCircle className="h-5 w-5 text-red-600 group-hover:text-white" />
+                                }
+                              </motion.div>
+                            </motion.div>
+                            
+                            <div className="flex-1">
+                              <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                                {metric.title}
+                              </span>
+                              <motion.div 
+                                className="w-full bg-gray-200 rounded-full h-1 mt-1"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: selectedImpactField === metric.title ? 1 : 0 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <motion.div 
+                                  className={`h-1 rounded-full ${
+                                    metric.status === "Good Job!" ? "bg-green-500" : "bg-red-500"
+                                  }`}
+                                  initial={{ width: 0 }}
+                                  animate={{ 
+                                    width: selectedImpactField === metric.title ? "100%" : "0%" 
+                                  }}
+                                  transition={{ delay: 0.2, duration: 0.5 }}
+                                />
+                              </motion.div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </motion.div>
 
                     {/* Feedback Content */}
                     <div className="flex-1 bg-white border rounded-lg p-4 overflow-y-auto">
@@ -704,11 +1214,18 @@ const getImpactContent = (field: string) => {
                         <Plus className="h-4 w-4 text-gray-500" />
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
                 {activeSystemSection === "presentation" && (
-                  <div className="flex gap-4 h-96">
+                  <motion.div 
+                    key="presentation"
+                    className="flex gap-4 h-96"
+                    initial={{ opacity: 0, x: 100 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -100 }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                  >
                     {/* Categories Sidebar */}
                     <div className="w-36 space-y-1">
                       {presentationMetrics.map((metric, index) => (
@@ -717,7 +1234,21 @@ const getImpactContent = (field: string) => {
                           className={`flex items-center gap-3 p-2 cursor-pointer rounded ${
                             selectedPresentationField === metric.title ? "bg-white border-l-4 border-green-500" : "hover:bg-gray-50"
                           }`}
-                          onClick={() => setSelectedPresentationField(metric.title)}
+                          onClick={() => {
+                            setSelectedPresentationField(metric.title);
+                            // Map metric title to analysis type for highlighting
+                            const analysisTypeMap: { [key: string]: string } = {
+                              "Number of Pages": "wordCount",
+                              "Overall Format": "consistency", 
+                              "Essential Sections": "sectionHeaders",
+                              "Section Specific": "bulletPoints",
+                              "Spell Check": "spellCheck"
+                            };
+                            const analysisType = analysisTypeMap[metric.title];
+                            if (analysisType) {
+                              toggleHighlight(analysisType);
+                            }
+                          }}
                         >
                           <div className={`w-8 h-8 ${metric.status === "Good Job!" ? "bg-green-100" : "bg-red-100"} rounded-full flex items-center justify-center`}>
                             {metric.status === "Good Job!" ? 
@@ -783,11 +1314,18 @@ const getImpactContent = (field: string) => {
                         <Plus className="h-4 w-4 text-gray-500" />
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
 
                 {activeSystemSection === "competencies" && (
-                  <div className="flex gap-4 h-96">
+                  <motion.div 
+                    key="competencies"
+                    className="flex gap-4 h-96"
+                    initial={{ opacity: 0, x: 100 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -100 }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                  >
                     {/* Categories Sidebar */}
                     <div className="w-36 space-y-1">
                       {competencyMetrics.map((metric, index) => (
@@ -796,7 +1334,21 @@ const getImpactContent = (field: string) => {
                           className={`flex items-center gap-3 p-2 cursor-pointer rounded ${
                             selectedCompetencyField === metric.title ? "bg-white border-l-4 border-green-500" : "hover:bg-gray-50"
                           }`}
-                          onClick={() => setSelectedCompetencyField(metric.title)}
+                          onClick={() => {
+                            setSelectedCompetencyField(metric.title);
+                            // Map metric title to analysis type for highlighting
+                            const analysisTypeMap: { [key: string]: string } = {
+                              "Analytical": "technicalSkills",
+                              "Communication": "softSkills", 
+                              "Leadership": "actionVerbs",
+                              "Teamwork": "softSkills",
+                              "Initiative": "actionVerbs"
+                            };
+                            const analysisType = analysisTypeMap[metric.title];
+                            if (analysisType) {
+                              toggleHighlight(analysisType);
+                            }
+                          }}
                         >
                           <div className={`w-8 h-8 ${
                             metric.status === "Good Job!" ? "bg-green-100" : 
@@ -884,70 +1436,83 @@ const getImpactContent = (field: string) => {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )}
+                </AnimatePresence>
                 </div>
               </div>
 
-              {/* Right 50% - Resume Preview */}
-              <div className="w-1/2 pl-3 flex flex-col h-full">
-                <div className="bg-white border rounded-lg h-full overflow-hidden flex flex-col">
-                  {resumeData?.fileUrl || resumeData?.originalContent || resumeData?.fileInfo ? (
-                    <>
-                      <div className="p-2 border-b bg-gray-50 flex-shrink-0">
-                        <h3 className="text-sm font-medium text-gray-900">Resume Preview</h3>
-                      </div>
-                      
-                      {/* Display original uploaded resume */}
-                      {resumeData?.fileUrl ? (
-                        <div className="flex-1 overflow-hidden">
-                          <iframe 
-                            src={`${resumeData.fileUrl}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&view=FitH&zoom=page-fit`}
-                            className="w-full h-full border-0"
-                            title="Resume Preview"
-                            style={{ 
-                              transform: 'scale(1)',
-                              transformOrigin: 'top left'
-                            }}
-                          />
-                        </div>
-                      ) : resumeData?.originalContent ? (
-                        <div className="flex-1 overflow-hidden">
-                          <embed 
-                            src={`data:application/pdf;base64,${resumeData.originalContent}#toolbar=0&navpanes=0&scrollbar=0&statusbar=0&messages=0&view=FitH&zoom=page-fit`}
-                            type="application/pdf"
-                            className="w-full h-full border-0"
-                            style={{ 
-                              transform: 'scale(1)',
-                              transformOrigin: 'top left'
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        /* File info available but no preview */
-                        <div className="flex items-center justify-center h-full text-center p-6">
-                          <div>
-                            <FileText className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                            <h3 className="text-sm font-medium text-gray-900 mb-1">Resume Uploaded</h3>
-                            <p className="text-xs text-gray-500">
-                              {resumeData.fileInfo.name}
-                            </p>
-                          </div>
+              {/* Right 50% - Full Size Resume with Dynamic Highlights */}
+              <div className="w-1/2 relative h-full">
+                {resumeData?.fileUrl ? (
+                  <>
+                    {/* PDF Viewer - Fit width, allow vertical scroll */}
+                    <div className="h-full w-full relative">
+                      <PDFViewerFitWidth
+                        fileUrl={resumeData.fileUrl}
+                        highlightedWords={[]} // We'll use our own highlighting system
+                        misspelledWords={misspelledWords} // Dynamic misspelled words from analysis
+                      />
+                    </div>
+                    
+                    {/* Dynamic Highlight Overlays */}
+                    <AnimatePresence>
+                      {(() => {
+                        console.log('Rendering highlights for types:', activeHighlights);
+                        console.log('Available highlights:', dynamicHighlights);
+                        return null;
+                      })()}
+                      {activeHighlights.length > 0 && Object.values(dynamicHighlights).flat().length > 0 && (
+                        <div className="absolute inset-0 pointer-events-none">
+                          {activeHighlights.map(highlightType => 
+                            dynamicHighlights[highlightType as keyof DynamicHighlights]
+                              ?.map(highlight => {
+                                console.log('Rendering highlight:', highlight);
+                                return (
+                                  <motion.div
+                                    key={highlight.id}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 0.7, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="absolute rounded-sm cursor-pointer pointer-events-auto"
+                                    style={{
+                                      top: highlight.coordinates.top,
+                                      left: highlight.coordinates.left,
+                                      width: highlight.coordinates.width,
+                                      height: highlight.coordinates.height,
+                                      backgroundColor: highlight.color,
+                                      border: '2px solid rgba(255,255,255,0.5)',
+                                      zIndex: 10,
+                                    } as CSSProperties}
+                                    onClick={() => {
+                                      toast({
+                                        title: `${highlight.type} Issue`,
+                                        description: highlight.suggestion,
+                                        variant: 'default',
+                                      });
+                                    }}
+                                  />
+                                );
+                              })
+                          )}
                         </div>
                       )}
-                    </>
-                  ) : (
-                    <div className="flex items-center justify-center h-full text-center p-6">
-                      <div>
-                        <FileText className="h-8 w-8 text-gray-400 mx-auto mb-3" />
-                        <h3 className="text-sm font-medium text-gray-900 mb-1">No Resume</h3>
-                        <p className="text-xs text-gray-500">Upload a resume to preview here</p>
+                    </AnimatePresence>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-center h-full bg-gray-50">
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center mx-auto mb-4">
+                        <FileText className="h-8 w-8 text-gray-400" />
                       </div>
+                      <p className="text-gray-500 font-medium">No resume uploaded</p>
+                      <p className="text-gray-400 text-sm mt-1">Upload a resume to see highlighting</p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            </div>
+            </motion.div>
           </TabsContent>
 
           <TabsContent value="bullet">
@@ -966,7 +1531,96 @@ const getImpactContent = (field: string) => {
               </Button>
             </Card>
           </TabsContent>
+
+          <TabsContent value="help">
+            <Card className="p-6">
+              <h3 className="text-xl font-semibold mb-4">Highlighting Guide</h3>
+              <p className="text-gray-600 mb-6">Click on any analysis field in the left panel to automatically highlight corresponding issues on your resume. Here's what each color represents:</p>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="w-6 h-6 bg-red-500 bg-opacity-30 border border-red-400 rounded flex-shrink-0 mt-1"></div>
+                    <div>
+                      <h4 className="font-semibold text-red-700">Spelling Issues</h4>
+                      <p className="text-sm text-gray-600">Highlights misspelled words throughout your resume including:</p>
+                      <ul className="text-xs text-gray-500 mt-1 list-disc list-inside">
+                        <li>Words in header section</li>
+                        <li>Misspelled technical terms</li>
+                        <li>Common spelling errors in experience</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="w-6 h-6 bg-orange-500 bg-opacity-30 border border-orange-400 rounded flex-shrink-0 mt-1"></div>
+                    <div>
+                      <h4 className="font-semibold text-orange-700">Grammar Issues</h4>
+                      <p className="text-sm text-gray-600">Identifies grammar problems such as:</p>
+                      <ul className="text-xs text-gray-500 mt-1 list-disc list-inside">
+                        <li>Passive voice usage</li>
+                        <li>Incomplete sentences</li>
+                        <li>Weak action verbs</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="w-6 h-6 bg-yellow-500 bg-opacity-30 border border-yellow-400 rounded flex-shrink-0 mt-1"></div>
+                    <div>
+                      <h4 className="font-semibold text-yellow-700">Redundancy</h4>
+                      <p className="text-sm text-gray-600">Shows repeated content like:</p>
+                      <ul className="text-xs text-gray-500 mt-1 list-disc list-inside">
+                        <li>Overused phrases</li>
+                        <li>Repetitive descriptions</li>
+                        <li>Similar action words</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="w-6 h-6 bg-blue-500 bg-opacity-30 border border-blue-400 rounded flex-shrink-0 mt-1"></div>
+                    <div>
+                      <h4 className="font-semibold text-blue-700">Format Issues</h4>
+                      <p className="text-sm text-gray-600">Highlights formatting problems including:</p>
+                      <ul className="text-xs text-gray-500 mt-1 list-disc list-inside">
+                        <li>Inconsistent font sizes</li>
+                        <li>Misaligned bullet points</li>
+                        <li>Date formatting issues</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 p-3 border rounded-lg">
+                    <div className="w-6 h-6 bg-green-500 bg-opacity-30 border border-green-400 rounded flex-shrink-0 mt-1"></div>
+                    <div>
+                      <h4 className="font-semibold text-green-700">Skills Enhancement</h4>
+                      <p className="text-sm text-gray-600">Suggests improvements to:</p>
+                      <ul className="text-xs text-gray-500 mt-1 list-disc list-inside">
+                        <li>Technical skills section</li>
+                        <li>Missing certifications</li>
+                        <li>Skill organization</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-semibold text-blue-800 mb-2">How to Use:</h4>
+                    <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                      <li>Click on any analysis field (Spell Check, Grammar, etc.)</li>
+                      <li>Watch as your resume automatically highlights relevant issues</li>
+                      <li>Hover over highlights to see specific suggestions</li>
+                      <li>Click multiple fields to see combined highlights</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
         </Tabs>
+        </motion.div>
       </div>
     </div>
   );

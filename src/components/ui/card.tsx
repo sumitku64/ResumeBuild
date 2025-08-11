@@ -1,20 +1,54 @@
 import * as React from "react"
+import { motion } from "framer-motion"
 
 import { cn } from "@/lib/utils"
+import { animations } from "@/lib/animations"
 
-const Card = React.forwardRef<
-  HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement>
->(({ className, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "rounded-lg border bg-card text-card-foreground shadow-sm",
-      className
-    )}
-    {...props}
-  />
-))
+interface AnimatedCardProps {
+  animated?: boolean
+  hoverEffect?: boolean
+  delay?: number
+  className?: string
+  children?: React.ReactNode
+}
+
+const Card = React.forwardRef<HTMLDivElement, AnimatedCardProps & React.HTMLAttributes<HTMLDivElement>>(
+  ({ className, animated = true, hoverEffect = true, delay = 0, children, ...htmlProps }, ref) => {
+    const animationProps = animated ? {
+      ...animations.fadeIn,
+      transition: { ...animations.fadeIn.transition, delay },
+      ...(hoverEffect ? animations.cardHover : {}),
+    } : {}
+
+    if (animated) {
+      return (
+        <motion.div
+          ref={ref}
+          className={cn(
+            "rounded-lg border bg-card text-card-foreground shadow-sm transition-all duration-300 hover:shadow-md",
+            className
+          )}
+          {...animationProps}
+        >
+          {children}
+        </motion.div>
+      )
+    }
+
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          "rounded-lg border bg-card text-card-foreground shadow-sm transition-all duration-300 hover:shadow-md",
+          className
+        )}
+        {...htmlProps}
+      >
+        {children}
+      </div>
+    )
+  }
+)
 Card.displayName = "Card"
 
 const CardHeader = React.forwardRef<
