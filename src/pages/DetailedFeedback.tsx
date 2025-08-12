@@ -39,6 +39,269 @@ import {
 } from "lucide-react";
 import Header from "@/components/dashboard/Header";
 
+// CSS styles for PDF.js-compatible keyword highlighting with Red, Green, Yellow scheme
+const highlightStyles = `
+  /* Quality/Impact Section - RED colors */
+  .highlight-actionable { 
+    background-color: rgba(239, 68, 68, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-specifics { 
+    background-color: rgba(220, 38, 38, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-measurable { 
+    background-color: rgba(185, 28, 28, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-redundancy { 
+    background-color: rgba(239, 68, 68, 0.4) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-tactical { 
+    background-color: rgba(220, 38, 38, 0.4) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+
+  /* Format/Presentation Section - YELLOW colors */
+  .highlight-format { 
+    background-color: rgba(245, 158, 11, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-pages { 
+    background-color: rgba(217, 119, 6, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-sections { 
+    background-color: rgba(180, 83, 9, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-spell { 
+    background-color: rgba(245, 158, 11, 0.4) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+
+  /* Skills/Competencies Section - GREEN colors */
+  .highlight-analytical { 
+    background-color: rgba(34, 197, 94, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-communication { 
+    background-color: rgba(22, 163, 74, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-leadership { 
+    background-color: rgba(21, 128, 61, 0.5) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-teamwork { 
+    background-color: rgba(34, 197, 94, 0.4) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  .highlight-initiative { 
+    background-color: rgba(22, 163, 74, 0.4) !important; 
+    border: none !important; 
+    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    display: inline !important;
+    line-height: normal !important;
+    border-radius: 2px !important;
+  }
+  
+  /* Subtle hover effects that don't disrupt text positioning */
+  .highlight-actionable:hover,
+  .highlight-specifics:hover,
+  .highlight-measurable:hover,
+  .highlight-redundancy:hover,
+  .highlight-tactical:hover {
+    background-color: rgba(239, 68, 68, 0.7) !important;
+    transition: background-color 0.2s ease !important;
+  }
+
+  .highlight-format:hover,
+  .highlight-pages:hover,
+  .highlight-sections:hover,
+  .highlight-spell:hover {
+    background-color: rgba(245, 158, 11, 0.7) !important;
+    transition: background-color 0.2s ease !important;
+  }
+
+  .highlight-analytical:hover,
+  .highlight-communication:hover,
+  .highlight-leadership:hover,
+  .highlight-teamwork:hover,
+  .highlight-initiative:hover {
+    background-color: rgba(34, 197, 94, 0.7) !important;
+    transition: background-color 0.2s ease !important;
+  }
+`;
+
+// Category-specific keywords for highlighting with section-based grouping
+const categoryKeywords = {
+  // Quality/Impact Section (RED) - Action-oriented and measurable content
+  'highlight-actionable': ['built', 'created', 'implemented', 'integrated', 'executed', 'developed', 'designed', 'managed', 'led', 'established', 'initiated', 'launched', 'delivered', 'achieved', 'accomplished', 'engineered', 'architected', 'deployed', 'optimized', 'automated', 'spearheaded', 'directed', 'coordinated'],
+  'highlight-specifics': ['%', 'CGPA', 'GPA', 'score', 'rank', 'percent', 'percentage', 'points', 'rating', 'grade', 'marks', 'years', 'months', 'weeks', 'days', 'hours', '$', 'million', 'thousand', 'billion', 'revenue', 'profit', 'growth', 'increase', 'decrease'],
+  'highlight-measurable': ['increased', 'reduced', 'improved', 'achieved', 'enhanced', 'optimized', 'boosted', 'decreased', 'accelerated', 'streamlined', 'maximized', 'minimized', 'scaled', 'grew', 'expanded', 'generated', 'saved', 'exceeded', 'surpassed'],
+  'highlight-redundancy': ['responsible', 'worked', 'helped', 'assisted', 'involved', 'participated', 'contributed', 'engaged', 'collaborated', 'coordinated', 'handled', 'dealt', 'performed', 'executed', 'tasked', 'assigned', 'duties', 'activities'],
+  'highlight-tactical': ['plan', 'strategy', 'approach', 'methodology', 'framework', 'process', 'system', 'procedure', 'protocol', 'guidelines', 'best practices', 'workflow', 'roadmap', 'architecture', 'blueprint', 'model'],
+
+  // Format/Presentation Section (YELLOW) - Document structure and formatting
+  'highlight-format': ['•', '-', '—', '●', '◦', '*', '▪', '▫', '→', '►', 'bullet', 'format', 'layout', 'structure', 'template', 'design'],
+  'highlight-pages': ['page', 'pages', 'resume', 'CV', 'document', 'portfolio', 'profile', 'one', 'two', 'three', 'single', 'multiple', 'length'],
+  'highlight-sections': ['experience', 'education', 'skills', 'projects', 'achievements', 'certifications', 'summary', 'objective', 'qualifications', 'background', 'expertise', 'contact', 'references', 'awards'],
+  'highlight-spell': ['Bachelor', 'Master', 'University', 'College', 'Degree', 'Engineering', 'Management', 'Technology', 'Science', 'Business', 'Computer', 'Software', 'Information', 'Systems', 'Project'],
+
+  // Skills/Competencies Section (GREEN) - Technical and soft skills
+  'highlight-analytical': ['analysis', 'data', 'research', 'statistical', 'metrics', 'insights', 'patterns', 'trends', 'evaluation', 'assessment', 'analytics', 'modeling', 'forecasting', 'algorithms', 'Excel', 'SQL', 'Python', 'R', 'Tableau', 'PowerBI'],
+  'highlight-communication': ['presentation', 'communication', 'documentation', 'reporting', 'training', 'mentoring', 'teaching', 'writing', 'speaking', 'presenting', 'emails', 'meetings', 'stakeholders', 'clients', 'customers'],
+  'highlight-leadership': ['led', 'managed', 'supervised', 'directed', 'coordinated', 'guided', 'mentored', 'oversaw', 'headed', 'administered', 'spearheaded', 'championed', 'pioneered', 'team', 'people', 'staff', 'employees'],
+  'highlight-teamwork': ['team', 'collaboration', 'group', 'partner', 'collective', 'cooperative', 'joint', 'shared', 'together', 'cross-functional', 'interdisciplinary', 'collaborative', 'teamwork', 'members', 'colleagues'],
+  'highlight-initiative': ['initiated', 'pioneered', 'founded', 'established', 'introduced', 'launched', 'started', 'created', 'developed', 'innovated', 'conceived', 'originated', 'proposed', 'self-motivated', 'proactive', 'independent']
+};
+
+// Function to highlight category-specific words in PDF text layer
+const highlightCategoryWords = (categoryClass: string) => {
+  // Get all highlight classes for clearing
+  const allHighlightClasses = Object.keys(categoryKeywords);
+
+  const attemptHighlight = (attempts = 0) => {
+    const spans = document.querySelectorAll('.react-pdf__Page__textContent span');
+    
+    console.log(`Attempt ${attempts + 1}: Found ${spans.length} text spans`);
+    
+    if (spans.length === 0 && attempts < 10) {
+      // If no spans found, wait a bit more and try again
+      setTimeout(() => attemptHighlight(attempts + 1), 500);
+      return;
+    }
+
+    if (spans.length > 0) {
+      const keywords = categoryKeywords[categoryClass] || [];
+      
+      // Create a more flexible regex that handles word boundaries and partial matches
+      const regexPattern = keywords.map(keyword => {
+        // Escape special regex characters
+        const escapedKeyword = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        // For very short keywords like '%' or single characters, match exactly
+        if (keyword.length <= 2) {
+          return escapedKeyword;
+        }
+        // For longer keywords, use word boundaries
+        return '\\b' + escapedKeyword + '\\b';
+      }).join('|');
+      
+      const regex = new RegExp('(' + regexPattern + ')', 'i');
+
+      let highlightedCount = 0;
+
+      // Clear existing highlights and apply new ones
+      spans.forEach(span => {
+        // Remove all highlight classes
+        allHighlightClasses.forEach(className => {
+          span.classList.remove(className);
+        });
+
+        // Check if this span's text matches any keywords for the current category
+        if (span.textContent && regex.test(span.textContent.trim())) {
+          span.classList.add(categoryClass);
+          highlightedCount++;
+        }
+      });
+
+      console.log(`✅ Applied ${categoryClass} to ${highlightedCount} matching spans out of ${spans.length} total spans`);
+      console.log(`🔍 Keywords used: ${keywords.join(', ')}`);
+      
+      if (highlightedCount === 0) {
+        console.log(`⚠️ No matches found for ${categoryClass}. This might be normal if the resume doesn't contain these keywords.`);
+      }
+    } else {
+      console.log('❌ No PDF text spans found after multiple attempts');
+    }
+  };
+
+  // Start the highlighting attempt
+  attemptHighlight();
+};
+
 const DetailedFeedback = () => {
   const [activeSystemSection, setActiveSystemSection] = useState("impact");
   const [selectedImpactField, setSelectedImpactField] = useState("Actionable");
@@ -66,6 +329,104 @@ const DetailedFeedback = () => {
   
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Inject CSS styles for highlighting
+  useEffect(() => {
+    const styleElement = document.createElement('style');
+    styleElement.textContent = highlightStyles;
+    document.head.appendChild(styleElement);
+
+    return () => {
+      // Clean up styles when component unmounts
+      document.head.removeChild(styleElement);
+    };
+  }, []);
+
+  // Handle category changes and trigger highlighting
+  useEffect(() => {
+    let categoryClass = '';
+    let sectionName = '';
+    
+    if (activeSystemSection === 'impact') {
+      sectionName = 'Quality/Impact (RED)';
+      switch (selectedImpactField) {
+        case 'Actionable': categoryClass = 'highlight-actionable'; break;
+        case 'Specifics': categoryClass = 'highlight-specifics'; break;
+        case 'Measurable': categoryClass = 'highlight-measurable'; break;
+        case 'Redundancy': categoryClass = 'highlight-redundancy'; break;
+        case 'Tactical': categoryClass = 'highlight-tactical'; break;
+      }
+    } else if (activeSystemSection === 'presentation') {
+      sectionName = 'Format/Presentation (YELLOW)';
+      switch (selectedPresentationField) {
+        case 'Number of Pages': categoryClass = 'highlight-pages'; break;
+        case 'Overall Format': categoryClass = 'highlight-format'; break;
+        case 'Essential Sections': categoryClass = 'highlight-sections'; break;
+        case 'Section Specific': categoryClass = 'highlight-sections'; break;
+        case 'Spell Check': categoryClass = 'highlight-spell'; break;
+      }
+    } else if (activeSystemSection === 'competencies') {
+      sectionName = 'Skills/Competencies (GREEN)';
+      switch (selectedCompetencyField) {
+        case 'Analytical': categoryClass = 'highlight-analytical'; break;
+        case 'Communication': categoryClass = 'highlight-communication'; break;
+        case 'Leadership': categoryClass = 'highlight-leadership'; break;
+        case 'Teamwork': categoryClass = 'highlight-teamwork'; break;
+        case 'Initiative': categoryClass = 'highlight-initiative'; break;
+      }
+    }
+
+    if (categoryClass) {
+      console.log(`🎯 Section: ${sectionName} | Category: ${categoryClass}`);
+      highlightCategoryWords(categoryClass);
+    }
+  }, [activeSystemSection, selectedImpactField, selectedPresentationField, selectedCompetencyField]);
+
+  // Add debugging function to window for manual testing
+  useEffect(() => {
+    (window as any).testHighlighting = () => {
+      console.log('🧪 Manual highlighting test - Testing actionable keywords');
+      highlightCategoryWords('highlight-actionable');
+    };
+    
+    (window as any).checkPDFSpans = () => {
+      const spans = document.querySelectorAll('.react-pdf__Page__textContent span');
+      console.log(`📊 Found ${spans.length} PDF text spans`);
+      if (spans.length > 0) {
+        console.log('Sample span:', spans[0]);
+        console.log('Sample text:', spans[0].textContent);
+        
+        // Show some sample text from multiple spans
+        const sampleTexts = Array.from(spans).slice(0, 10).map(span => span.textContent).join(' ');
+        console.log('Sample resume text:', sampleTexts);
+      }
+      return spans.length;
+    };
+
+    (window as any).testKeywordHighlight = (category: string) => {
+      console.log(`🎯 Testing keyword highlighting for: ${category}`);
+      const validCategories = Object.keys(categoryKeywords);
+      if (validCategories.includes(category)) {
+        highlightCategoryWords(category);
+      } else {
+        console.log(`❌ Invalid category. Valid categories are: ${validCategories.join(', ')}`);
+      }
+    };
+
+    (window as any).listCategories = () => {
+      console.log('📋 Available highlight categories:');
+      Object.keys(categoryKeywords).forEach(category => {
+        console.log(`  ${category}: ${categoryKeywords[category].slice(0, 5).join(', ')}...`);
+      });
+    };
+
+    return () => {
+      delete (window as any).testHighlighting;
+      delete (window as any).checkPDFSpans;
+      delete (window as any).testKeywordHighlight;
+      delete (window as any).listCategories;
+    };
+  }, []);
 
   // New function to analyze PDF dynamically
   const analyzePDFDynamically = useCallback(async (fileUrl: string) => {
@@ -1068,18 +1429,7 @@ const getImpactContent = (field: string) => {
                             }`}
                             onClick={() => {
                               setSelectedImpactField(metric.title);
-                              // Map metric title to analysis type for highlighting
-                              const analysisTypeMap: { [key: string]: string } = {
-                                "Actionable": "actionVerbs",
-                                "Specifics": "quantifiableResults", 
-                                "Measurable": "quantifiableResults",
-                                "Redundancy": "redundancy",
-                                "Tactical": "professional"
-                              };
-                              const analysisType = analysisTypeMap[metric.title];
-                              if (analysisType) {
-                                toggleHighlight(analysisType);
-                              }
+                              console.log(`🎯 Impact field selected: ${metric.title}`);
                             }}
                             variants={animations.staggerItem}
                             whileHover={{ 
@@ -1241,18 +1591,7 @@ const getImpactContent = (field: string) => {
                           }`}
                           onClick={() => {
                             setSelectedPresentationField(metric.title);
-                            // Map metric title to analysis type for highlighting
-                            const analysisTypeMap: { [key: string]: string } = {
-                              "Number of Pages": "wordCount",
-                              "Overall Format": "consistency", 
-                              "Essential Sections": "sectionHeaders",
-                              "Section Specific": "bulletPoints",
-                              "Spell Check": "spellCheck"
-                            };
-                            const analysisType = analysisTypeMap[metric.title];
-                            if (analysisType) {
-                              toggleHighlight(analysisType);
-                            }
+                            console.log(`🎯 Presentation field selected: ${metric.title}`);
                           }}
                         >
                           <div className={`w-8 h-8 ${metric.status === "Good Job!" ? "bg-green-100" : "bg-red-100"} rounded-full flex items-center justify-center`}>
@@ -1341,18 +1680,7 @@ const getImpactContent = (field: string) => {
                           }`}
                           onClick={() => {
                             setSelectedCompetencyField(metric.title);
-                            // Map metric title to analysis type for highlighting
-                            const analysisTypeMap: { [key: string]: string } = {
-                              "Analytical": "technicalSkills",
-                              "Communication": "softSkills", 
-                              "Leadership": "actionVerbs",
-                              "Teamwork": "softSkills",
-                              "Initiative": "actionVerbs"
-                            };
-                            const analysisType = analysisTypeMap[metric.title];
-                            if (analysisType) {
-                              toggleHighlight(analysisType);
-                            }
+                            console.log(`🎯 Competency field selected: ${metric.title}`);
                           }}
                         >
                           <div className={`w-8 h-8 ${

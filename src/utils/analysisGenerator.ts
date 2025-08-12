@@ -162,9 +162,9 @@ export const generateRandomAnalysis = () => {
       hour12: true
     }),
     metrics: [
-      { label: "Impact", score: impactScore, maxScore: 40 },
-      { label: "Presentation", score: presentationScore, maxScore: 30 },
-      { label: "Competencies", score: competenciesScore, maxScore: 30 }
+      { label: "Quality", score: impactScore, maxScore: 40 },
+      { label: "Format", score: presentationScore, maxScore: 30 },
+      { label: "Skills", score: competenciesScore, maxScore: 30 }
     ],
     improvementSteps
   };
