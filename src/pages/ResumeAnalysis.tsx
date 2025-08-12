@@ -137,7 +137,7 @@ const ResumeAnalysis = () => {
                 <div className="w-6 h-6 bg-gradient-primary rounded-full flex items-center justify-center">
                   <span className="text-white font-bold text-xs">RS</span>
                 </div>
-                <span className="text-sm text-muted-foreground">Benchmarked against millions of Resumes</span>
+                
               </div>
             </Card>
 

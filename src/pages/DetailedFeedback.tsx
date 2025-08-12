@@ -561,12 +561,12 @@ const getImpactContent = (field: string) => {
               <TabsTrigger value="system" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
                 System Feedback
             </TabsTrigger>
-            <TabsTrigger value="bullet" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            {/* <TabsTrigger value="bullet" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               Bullet Level
             </TabsTrigger>
             <TabsTrigger value="help" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
               Highlighting Guide
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
 
           <TabsContent value="summary" className="space-y-6" animated={true}>
