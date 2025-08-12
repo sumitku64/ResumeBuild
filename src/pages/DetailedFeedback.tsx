@@ -79,10 +79,15 @@ const DetailedFeedback = () => {
       setDynamicHighlights(highlights);
       
       // Also run the existing text analysis if we have extracted text
-      if (resumeData?.extractedText) {
-        const analyzer = new ResumeAnalyzer(resumeData.extractedText);
-        const result = analyzer.analyzeAll();
-        setAnalysisResult(result);
+      // Get the current resume data from localStorage to avoid circular dependency
+      const savedAnalysis = localStorage.getItem('resumeAnalysis');
+      if (savedAnalysis) {
+        const parsedData = JSON.parse(savedAnalysis);
+        if (parsedData?.extractedText) {
+          const analyzer = new ResumeAnalyzer(parsedData.extractedText);
+          const result = analyzer.analyzeAll();
+          setAnalysisResult(result);
+        }
       }
       
       console.log('Dynamic analysis complete:', highlights);
@@ -103,7 +108,7 @@ const DetailedFeedback = () => {
     } finally {
       setIsAnalyzing(false);
     }
-  }, [resumeData, toast]);
+  }, [toast]); // Removed resumeData dependency
 
   useEffect(() => {
     // Load resume analysis data from localStorage
@@ -137,7 +142,7 @@ const DetailedFeedback = () => {
         });
       }
     }
-  }, [toast, analyzePDFDynamically]);
+  }, [toast]); // Removed analyzePDFDynamically from dependencies
 
   // Simple function to toggle highlights with static implementation
   const toggleHighlight = useCallback((analysisType: string) => {
@@ -891,12 +896,12 @@ const getImpactContent = (field: string) => {
 
           <TabsContent value="system" className="h-full" animated={true}>
             <motion.div 
-              className="flex h-[calc(100vh-250px)]"
+              className="flex min-h-[calc(100vh-250px)]"
               {...animations.fadeIn}
               transition={{ duration: 0.6 }}
             >
               {/* Left 50% - Feedback Interface */}
-              <div className="w-1/2 pr-3 flex flex-col h-full">
+              <div className="w-1/2 pr-3 flex flex-col">
                 {/* Enhanced Header Section */}
                 <motion.div 
                   className="bg-gradient-to-br from-orange-50 via-yellow-50 to-amber-50 p-6 rounded-xl mb-4 flex-shrink-0 border-2 border-orange-200 shadow-lg"
@@ -1032,15 +1037,15 @@ const getImpactContent = (field: string) => {
                   </motion.div>
                 </motion.div>
 
-                {/* Content area with scroll */}
-                <div className="flex-1 overflow-y-auto min-h-0">
+                {/* Content area */}
+                <div className="flex-1 min-h-0">
 
                 {/* Dynamic Content based on active section */}
                 <AnimatePresence mode="wait">
                   {activeSystemSection === "impact" && (
                     <motion.div 
                       key="impact"
-                      className="flex gap-4 h-full"
+                      className="flex gap-4"
                       initial={{ opacity: 0, x: 100 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -100 }}
@@ -1150,7 +1155,7 @@ const getImpactContent = (field: string) => {
                       </motion.div>
 
                     {/* Feedback Content */}
-                    <div className="flex-1 bg-white border rounded-lg p-4 overflow-y-auto">
+                    <div className="flex-1 bg-white border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-4">
                         <h3 className="text-lg font-semibold text-gray-800">{selectedImpactField}</h3>
                         <Badge className={`${
@@ -1220,7 +1225,7 @@ const getImpactContent = (field: string) => {
                 {activeSystemSection === "presentation" && (
                   <motion.div 
                     key="presentation"
-                    className="flex gap-4 h-96"
+                    className="flex gap-4"
                     initial={{ opacity: 0, x: 100 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -100 }}
@@ -1320,7 +1325,7 @@ const getImpactContent = (field: string) => {
                 {activeSystemSection === "competencies" && (
                   <motion.div 
                     key="competencies"
-                    className="flex gap-4 h-96"
+                    className="flex gap-4"
                     initial={{ opacity: 0, x: 100 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -100 }}
