@@ -22,7 +22,7 @@ let userIdCounter = 1;
 // Configure CORS for production and development
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://rscans.netlify.app', 'https://srv-d2de59pr0fns73e0u3pg.onrender.com']
+    ? ['https://rscans.netlify.app', 'https://resumebuild-i244.onrender.com']
     : ['http://localhost:8080', 'http://localhost:8081', 'http://localhost:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
