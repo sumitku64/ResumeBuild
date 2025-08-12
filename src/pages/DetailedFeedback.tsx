@@ -473,55 +473,59 @@ const DetailedFeedback = () => {
 
   useEffect(() => {
     // Load resume analysis data from localStorage
-    const savedAnalysis = localStorage.getItem('resumeAnalysis');
-    if (savedAnalysis) {
-      try {
-        const parsedData = JSON.parse(savedAnalysis);
-        
-        // Get the file URL from sessionStorage if available
-        const fileUrl = sessionStorage.getItem('currentResumeFileUrl');
-        if (fileUrl && !parsedData.fileUrl) {
-          parsedData.fileUrl = fileUrl;
-        }
-        
-        console.log('Resume data loaded:', parsedData);
-        console.log('Has extracted text:', !!parsedData.extractedText);
-        console.log('Extracted text preview:', parsedData.extractedText?.substring(0, 200));
-        
-        // Generate fresh analysis data for each new resume upload
-        if (parsedData.extractedText) {
-          const { generateRandomAnalysis } = await import('../utils/analysisGenerator');
-          const freshAnalysis = generateRandomAnalysis(parsedData.extractedText);
+    const loadAnalysisData = async () => {
+      const savedAnalysis = localStorage.getItem('resumeAnalysis');
+      if (savedAnalysis) {
+        try {
+          const parsedData = JSON.parse(savedAnalysis);
           
-          // Merge fresh analysis with existing data
-          const updatedData = {
-            ...parsedData,
-            ...freshAnalysis,
-            fileUrl: parsedData.fileUrl || fileUrl
-          };
+          // Get the file URL from sessionStorage if available
+          const fileUrl = sessionStorage.getItem('currentResumeFileUrl');
+          if (fileUrl && !parsedData.fileUrl) {
+            parsedData.fileUrl = fileUrl;
+          }
           
-          // Update localStorage with fresh data
-          localStorage.setItem('resumeAnalysis', JSON.stringify(updatedData));
-          setResumeData(updatedData);
+          console.log('Resume data loaded:', parsedData);
+          console.log('Has extracted text:', !!parsedData.extractedText);
+          console.log('Extracted text preview:', parsedData.extractedText?.substring(0, 200));
           
-          console.log('🔄 Generated fresh analysis:', updatedData);
-        } else {
-          setResumeData(parsedData);
+          // Generate fresh analysis data for each new resume upload
+          if (parsedData.extractedText) {
+            const { generateRandomAnalysis } = await import('../utils/analysisGenerator');
+            const freshAnalysis = generateRandomAnalysis();
+            
+            // Merge fresh analysis with existing data
+            const updatedData = {
+              ...parsedData,
+              ...freshAnalysis,
+              fileUrl: parsedData.fileUrl || fileUrl
+            };
+            
+            // Update localStorage with fresh data
+            localStorage.setItem('resumeAnalysis', JSON.stringify(updatedData));
+            setResumeData(updatedData);
+            
+            console.log('🔄 Generated fresh analysis:', updatedData);
+          } else {
+            setResumeData(parsedData);
+          }
+          
+          // Run dynamic PDF analysis only once
+          if (parsedData.extractedText && (parsedData.fileUrl || fileUrl) && !hasAnalyzedRef.current) {
+            analyzePDFDynamically(parsedData.fileUrl || fileUrl);
+          }
+        } catch (error) {
+          console.error('Error parsing resume analysis data:', error);
+          toast({
+            title: "Error",
+            description: "Failed to load resume analysis data",
+            variant: "destructive",
+          });
         }
-        
-        // Run dynamic PDF analysis only once
-        if (parsedData.extractedText && (parsedData.fileUrl || fileUrl) && !hasAnalyzedRef.current) {
-          analyzePDFDynamically(parsedData.fileUrl || fileUrl);
-        }
-      } catch (error) {
-        console.error('Error parsing resume analysis data:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load resume analysis data",
-          variant: "destructive",
-        });
       }
-    }
+    };
+
+    loadAnalysisData();
   }, [toast]); // Removed analyzePDFDynamically from dependencies
 
   // Simple function to toggle highlights with static implementation
@@ -761,7 +765,7 @@ const getImpactContent = (field: string) => {
       // Generate fresh analysis data
       try {
         const { generateRandomAnalysis } = await import('../utils/analysisGenerator');
-        const freshAnalysis = generateRandomAnalysis(resumeData.extractedText || 'sample resume text');
+        const freshAnalysis = generateRandomAnalysis();
         
         // Update with fresh data
         const updatedData = {
