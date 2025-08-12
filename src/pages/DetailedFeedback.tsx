@@ -1448,7 +1448,7 @@ const getImpactContent = (field: string) => {
               </div>
 
               {/* Right 50% - Full Size Resume with Dynamic Highlights */}
-              <div className="w-1/2 relative h-full">
+              <div className="w-1/2 relative h-[calc(100vh-150px)]">
                 {resumeData?.fileUrl ? (
                   <>
                     {/* PDF Viewer - Fit width, allow vertical scroll */}
