@@ -488,11 +488,30 @@ const DetailedFeedback = () => {
         console.log('Has extracted text:', !!parsedData.extractedText);
         console.log('Extracted text preview:', parsedData.extractedText?.substring(0, 200));
         
-        setResumeData(parsedData);
+        // Generate fresh analysis data for each new resume upload
+        if (parsedData.extractedText) {
+          const { generateRandomAnalysis } = await import('../utils/analysisGenerator');
+          const freshAnalysis = generateRandomAnalysis(parsedData.extractedText);
+          
+          // Merge fresh analysis with existing data
+          const updatedData = {
+            ...parsedData,
+            ...freshAnalysis,
+            fileUrl: parsedData.fileUrl || fileUrl
+          };
+          
+          // Update localStorage with fresh data
+          localStorage.setItem('resumeAnalysis', JSON.stringify(updatedData));
+          setResumeData(updatedData);
+          
+          console.log('🔄 Generated fresh analysis:', updatedData);
+        } else {
+          setResumeData(parsedData);
+        }
         
         // Run dynamic PDF analysis only once
-        if (parsedData.extractedText && parsedData.fileUrl && !hasAnalyzedRef.current) {
-          analyzePDFDynamically(parsedData.fileUrl);
+        if (parsedData.extractedText && (parsedData.fileUrl || fileUrl) && !hasAnalyzedRef.current) {
+          analyzePDFDynamically(parsedData.fileUrl || fileUrl);
         }
       } catch (error) {
         console.error('Error parsing resume analysis data:', error);
@@ -735,10 +754,44 @@ const getImpactContent = (field: string) => {
     });
   };
 
-  const handleManualAnalysis = () => {
+  const handleManualAnalysis = async () => {
     if (resumeData?.fileUrl) {
       hasAnalyzedRef.current = false; // Reset analysis flag
-      analyzePDFDynamically(resumeData.fileUrl);
+      
+      // Generate fresh analysis data
+      try {
+        const { generateRandomAnalysis } = await import('../utils/analysisGenerator');
+        const freshAnalysis = generateRandomAnalysis(resumeData.extractedText || 'sample resume text');
+        
+        // Update with fresh data
+        const updatedData = {
+          ...resumeData,
+          ...freshAnalysis,
+          uploadTime: new Date().toISOString() // Track when analysis was generated
+        };
+        
+        // Update localStorage and state
+        localStorage.setItem('resumeAnalysis', JSON.stringify(updatedData));
+        setResumeData(updatedData);
+        
+        // Run PDF analysis with fresh data
+        analyzePDFDynamically(resumeData.fileUrl);
+        
+        toast({
+          title: "Analysis Updated",
+          description: "Fresh analysis generated with new scores!",
+          variant: "default",
+        });
+        
+        console.log('🔄 Manual analysis - Fresh data generated:', updatedData);
+      } catch (error) {
+        console.error('Error generating fresh analysis:', error);
+        toast({
+          title: "Analysis Error",
+          description: "Failed to generate fresh analysis",
+          variant: "destructive",
+        });
+      }
     } else {
       toast({
         title: "No Resume Found",
@@ -969,7 +1022,7 @@ const getImpactContent = (field: string) => {
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
                           ) : (
                             <span className="text-2xl font-bold text-white">
-                              {Math.max(100 - (
+                              {resumeData?.score || Math.max(100 - (
                                 Object.values(dynamicHighlights).flat().length * 5
                               ), 50)}
                             </span>
@@ -1285,6 +1338,7 @@ const getImpactContent = (field: string) => {
                       >
                         {resumeData?.score || 68}
                       </motion.span>
+                      <span className="text-lg text-gray-500">/100</span>
                     </motion.div>
                     <div>
                       <h3 className="text-gray-800 font-bold text-lg">Resume Score</h3>
